@@ -92,6 +92,7 @@ object PreferKey {
     const val replaceEnableDefault = "replaceEnableDefault"
     const val showBrightnessView = "showBrightnessView"
     const val autoClearExpired = "autoClearExpired"
+    const val freeImport = "freeImport"
     const val autoChangeSource = "autoChangeSource"
     const val importKeepName = "importKeepName"
     const val importKeepGroup = "importKeepGroup"

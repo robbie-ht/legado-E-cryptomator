@@ -1,120 +1,123 @@
-<div align="center">
-<img width="125" height="125" src="https://gitee.com/lyc486/legado/raw/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" alt="legado"/>
-<br>
-阅读Sigma
-<br>
-阅读Sigma继承自<a href="https://github.com/gedoor/legado" target="_blank">Legado</a>，延续开源阅读项目，在其基础上新增更多功能。
-</div>
+# Legado-E Cryptomator
 
-## 版本说明
-- 测试版(beta)：包名与Legado原版相同，可覆盖更新，版本更新频繁
-- 正式版(plus)：新的共存包名，安装后是一个新软件，不会覆盖Legado原版，每到一个稳定阶段进行一次更新
-#### 找不到下载地址可以去这里 [下载软件](https://gitee.com/lyc486/legado/releases)
+> 基于 [legado-E](https://github.com/Luoyacheng/legado-E)（开源阅读 Legado 的延续分支）改造的**加密版**。
+> 原版全部阅读 / 书源功能保留，额外增加「密码解锁 + 数据全加密」：未输入密码时，书架、书名、封面、正文在磁盘上全部是密文。
 
-[![](https://img.shields.io/badge/-Contents:-696969.svg)](#contents) [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-主要功能-) [![](https://img.shields.io/badge/-Community-F5F5F5.svg)](#Community-交流社区-) [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-) [![](https://img.shields.io/badge/-Other-F5F5F5.svg)](#Other-其他-) [![](https://img.shields.io/badge/-Grateful-F5F5F5.svg)](#Grateful-感谢-) [![](https://img.shields.io/badge/-Interface-F5F5F5.svg)](#Interface-界面-)
+原版功能（自定义书源、搜索发现、订阅、替换净化、本地 TXT/EPUB、朗读、缓存、备份恢复等）**全部保留**，本分支只增加加密层与导入开关，不改变原有使用方式。
 
->新用户？
->
->软件不提供内容，需要您自己手动添加，例如导入书源等。  
->看看 [帮助文档](https://www.yuque.com/legado/wiki)，也许里面就有你要的答案。
+---
 
-# Function-主要功能 [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-主要功能-)
+## 加密特性
 
-<details><summary>原版</summary>
-1.自定义书源，自己设置规则，抓取网页数据，规则简单易懂，软件内有规则说明。<br>
-2.列表书架，网格书架自由切换。<br>
-3.书源规则支持搜索及发现，所有找书看书功能全部自定义，找书更方便。<br>
-4.订阅内容,可以订阅想看的任何内容,看你想看<br>
-5.支持替换净化，去除广告替换内容很方便。<br>
-6.支持本地TXT、EPUB阅读，手动浏览，智能扫描。<br>
-7.支持高度自定义阅读界面，切换字体、颜色、背景、行距、段距、加粗、简繁转换等。<br>
-8.支持多种翻页模式，覆盖、仿真、滑动、滚动等。<br>
-9.软件开源，持续优化，无广告。
-</details>
+### 1. 每次启动必须输入密码
 
-<details><summary>延续</summary>
-1.带歌词的音频播放功能。<br>
-2.带弹幕的视频播放功能。<br>
-3.更方便的书源编辑。<br>
-4.更丰富的书源功能实现。<br>
-5.更完善的订阅源功能。<br>
-</details>
+启动后先到解锁页，密码正确才解密数据库、进入书架。首次使用为「设置密码」。
 
-<a href="#readme">
-    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
-</a>
+### 2. 数据全部加密落盘
 
-# Community-交流社区 [![](https://img.shields.io/badge/-Community-F5F5F5.svg)](#Community-交流社区-)
+```
+/data/data/io.legado.app.release/files/novelVault/
+├── vault.info                  ← 唯一未加密文件：KDF 参数、盐、被口令包裹的主密钥（不含任何书名）
+└── vault/                      ← 加密文件夹
+    ├── library.db              ← SQLCipher 加密数据库（书架、书源、阅读进度、替换规则）
+    ├── books/<id>.bin          ← 本地导入书籍正文（AES-256-GCM）
+    ├── books/<hash>/*.nb       ← 书源章节正文（AES-256-GCM）
+    ├── covers/<id>.bin         ← 本地书封面（AES-256-GCM）
+    └── legacy/*.bin            ← 首次启用时对旧明文数据的加密归档
+```
 
-#### Telegram
-[![Telegram-channel](https://img.shields.io/badge/Σ_Telegram-%E9%A2%91%E9%81%93-blue)](https://t.me/readsigma)
+- 口令派生：PBKDF2-HMAC-SHA256，200000 次迭代
+- 主密钥：随机 256 位，用口令派生密钥以 AES-256-GCM 包裹
+- 文件加密：AES-256-GCM，64KB 分块，块序号作 AAD（防重排、防截断）
+- 数据库口令：由主密钥派生，与用户密码解耦（改密码无需重加密数据库）
 
-#### WeChat
-[![WeChat-channel](https://img.shields.io/badge/Σ_%e5%be%ae%e4%bf%a1-%e5%85%ac%e4%bc%97%e5%8f%b7-green)](https://mp.weixin.qq.com/mp/appmsgalbum?action=getalbum&album_id=4345046964963590147)  
-<img src="https://open.weixin.qq.com/qr/code?username=legado_plus" width="100">
+### 3. 不输密码什么都看不到
 
-#### Discord
-[![Discord](https://img.shields.io/discord/560731361414086666?color=%235865f2&label=Discord)](https://discord.gg/VtUfRyzRXn)
+- 未解锁时没有数据库句柄、内存里没有密钥，访问直接抛 `VaultLockedException`
+- 所有界面在 `onCreate/onStart` 被 `VaultGate` 拦截并跳回解锁页，界面先置为不可见，防止书架闪现
+- 退到后台 / 从最近任务划掉：立即关库、抹掉内存密钥、删除解密临时目录与缓存
+- 屏幕熄灭：立即锁定
 
-#### Other
-https://www.yuque.com/legado/wiki/community
+### 4. 导入即加密
 
-<a href="#readme">
-    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
-</a>
+本地 TXT/EPUB/PDF/MOBI、压缩包内书籍、在线文件、WebDAV 下载，全部**流式加密**写入保险库，公共目录不留明文。
 
-# API [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-)
-* 阅读3.0 提供了2种方式的API：`Web方式`和`Content Provider方式`。您可以在[这里](api.md)根据需要自行调用。 
-* 可通过url唤起阅读进行一键导入,url格式: legado://import/{path}?src={url}
-* path类型: bookSource,rssSource,replaceRule,textTocRule,httpTTS,theme,readConfig,dictRule,[addToBookshelf](/app/src/main/java/io/legado/app/ui/association/AddToBookshelfDialog.kt)
-* path类型解释: 书源,订阅源,替换规则,本地txt小说目录规则,在线朗读引擎,主题,阅读排版,添加到书架
+### 5. 书源加书架自动加密缓存
 
-<a href="#readme">
-    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
-</a>
+书源书加入书架后自动缓存全本，章节正文加密写入 `books/<hash>/`，读取时解密。
 
-# Other-其他 [![](https://img.shields.io/badge/-Other-F5F5F5.svg)](#Other-其他-)  
+### 6. 选文件、分享导入不会卡在密码上
 
-<details><summary>免责声明</summary>
-阅读依赖系统webview提供网页访问功能，通过用户自定义的第三方网页书源返回阅读内容，阅读对其返回内容概不负责，亦不承担任何法律责任。任何第三方网页书源均系他人制作或提供，非软件作者，阅读对其合法性概不负责，亦不承担任何法律责任。第三方网页书源提供的试读，不代表阅读赞成其内容或立场。您应该对用搜索到的结果自行承担风险。<br>
-任何单位或个人认为第三方网页书源内容可能涉嫌侵犯其信息网络传播权，应该及时向阅读提出书权力通知，并提供身份证明、权属证明及详细侵权情况证明。阅读在收到上述法律文件后，将会依法尽快屏蔽相关内容。<br>
-</details>
+- 在 App 内点「选择文件/目录」跳系统选择器时给 120 秒宽限，返回后无需重新输密码（屏幕熄灭立即作废）
+- 从系统「分享 / 打开方式」把文件发给本 App 时，先停在解锁页；解锁后**自动重放原导入流程**
 
-##### 阅读3.0
-* [书源规则](https://mgz0227.github.io/The-tutorial-of-Legado/)
-* [更新日志](/app/src/main/assets/updateLog.md)
-* [帮助文档](/app/src/main/assets/web/help/md/appHelp.md)
+---
 
-<a href="#readme">
-    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
-</a>
+## 新增：自由导入
 
-# Grateful-感谢 [![](https://img.shields.io/badge/-Grateful-F5F5F5.svg)](#Grateful-感谢-)
-> * org.jsoup:jsoup
-> * cn.wanghaomiao:JsoupXpath
-> * com.jayway.jsonpath:json-path
-> * com.github.gedoor:rhino-android
-> * com.squareup.okhttp3:okhttp
-> * com.github.bumptech.glide:glide
-> * org.nanohttpd:nanohttpd
-> * org.nanohttpd:nanohttpd-websocket
-> * cn.bingoogolapple:bga-qrcode-zxing
-> * com.jaredrummler:colorpicker
-> * org.apache.commons:commons-text
-> * io.noties.markwon:core
-> * io.noties.markwon:image-glide
-> * com.hankcs:hanlp
-> * com.positiondev.epublib:epublib-core
-> * com.github.Moriafly:LyricViewX
-> * io.github.rosemoe:editor
-<a href="#readme">
-    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
-</a>
+路径：**我的 → 其它设定 → 自由导入**（默认关闭）
 
-# Interface-界面 [![](https://img.shields.io/badge/-Interface-F5F5F5.svg)](#Interface-界面-)
-<img src="https://channel.qpic.cn/psc?/channel/NaDwC23LjvXqrn3RH.9z8bdVVU8X7gejuELokmv2DGfJwQpP2UFcwHqqFK4nzfgNUTL6Wij4QqsJySkoPfQuCB1l5MstXCXWjmH5Mm6PGkU!/b=&bo=UQRICVEESAkWADA!&ek=1&tl=1" width="270">  <img src="https://channel.qpic.cn/psc?/channel/NaDwC23LjvXqrn3RH.9z8epqbe*Bzro*ybEEVmlLpuD9E14zFMjtRx2JeZJdVzNYeSZqCm5Kv0MruAumEe0tJ77n*agIEzJIaSN9VHAen2I!/b=&bo=UQRICVEESAkWADA!&ek=1&tl=1" width="270">  
-<img src="https://channel.qpic.cn/psc?/channel/NaDwC23LjvXqrn3RH.9z8SQggDiubhwWyktI5v48VluvK1vwdY2OV9RauO04TcXb4425kVcBiAz2DhpfnrDZKnSpwp8SLnDtKOxtLm1yP9I!/b=&bo=UQRICVEESAkWADA!&ek=1&tl=1" width="270">  <img src="https://channel.qpic.cn/psc?/channel/NaDwC23LjvXqrn3RH.9z8Tx.7oqZyCeAdzSVQa6ZgtXKE*EaUCdEJ3zm2ynIrgem10TqY8aKvSbG3v5FNNHtwSFyN5QfLW*Zd14gUetfsC8!/b=&bo=UgRKCVIESgkWADA!&ek=1&tl=1" width="270">
+开启后：
 
-<a href="#readme">
-    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
-</a>
+| 行为 | 说明 |
+| --- | --- |
+| 导入列表 | 不再限制后缀，`Books/` 目录下任何文件都会列出来（`.md`、`.log`、`.json`、无后缀等） |
+| 导入处理 | 不支持的格式按**纯文本**解析（走 TXT 目录规则），未知后缀也能分章、阅读 |
+| 外部打开 | 从文件管理器「打开方式 / 分享」发来的未知格式，会先提示「不受支持，是否继续打开」，确认后按文本打开 |
+
+关闭时保持原版行为：只认 `txt/epub/umd/pdf/mobi/azw3/azw/zip/rar/7z`。
+
+---
+
+## 使用
+
+1. 首次打开：设置阅读密码（**忘记无法找回**，只能清空全部加密数据重来）
+2. 添加书籍：书架菜单 → 新增本机（或从文件管理器「打开方式 / 分享」发到本 App）
+3. 添加书源：「我的」→ 书源管理 → 导入本地 / 在线
+4. 从后台回来、重新打开 App 都需要再输一次密码
+
+### 与原版共存说明
+
+- 包名 `io.legado.app.release`，可与官方 Legado 同时安装，但**数据不互通**（官方是明文库，本版是加密库）
+- 从官方版升级过来时，首次创建保险库会把旧明文数据库/缓存**加密归档**到 `vault/legacy/` 后再删除明文，不会静默丢数据
+
+---
+
+## 构建
+
+```bash
+export ANDROID_HOME=/path/to/Android/Sdk
+./gradlew :app:assembleAppDebug      # 调试包 io.legado.app.debug
+./gradlew :app:assembleAppRelease    # 正式包 io.legado.app.release（需签名）
+```
+
+签名构建（自行生成 keystore）：
+
+```bash
+./gradlew :app:assembleAppRelease \
+  -PRELEASE_STORE_FILE=/path/to/release.jks \
+  -PRELEASE_STORE_PASSWORD=****** \
+  -PRELEASE_KEY_ALIAS=legado \
+  -PRELEASE_KEY_PASSWORD=******
+```
+
+环境要求：JDK 17、Android SDK Platform 36。
+
+---
+
+## 已知限制
+
+- 密码遗失无法恢复，只能「清空保险库」重来
+- 每章正文是一个独立加密文件，书越多 `books/` 下文件越多（内容仍是密文）
+- 阅读时明文临时副本位于 `files/.vaultwork`，锁定时删除；阅读过程中该目录会短暂存在明文，属正常现象
+- 加密实现为本项目自研（PBKDF2 + AES-GCM + SQLCipher），未集成 Cryptomator 官方库
+
+---
+
+## 致谢与许可
+
+- 上游：[gedoor/legado](https://github.com/gedoor/legado)、[Luoyacheng/legado-E](https://github.com/Luoyacheng/legado-E)
+- 数据库加密：[SQLCipher for Android](https://github.com/sqlcipher/sqlcipher-android)
+- 本项目遵循 **GPL-3.0**，见 [LICENSE](LICENSE)
+
+> 本软件不提供任何书籍内容，书源与书籍由使用者自行添加。请遵守当地法律法规与内容平台条款。

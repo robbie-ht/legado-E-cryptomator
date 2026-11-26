@@ -1361,4 +1361,8 @@
     <string name="vault_reset_title">清空保险库</string>
     <string name="vault_reset_message">所有加密书架与书籍文件都会被删除，无法恢复。</string>
     <string name="vault_reset_done">已清空，请重新设置密码</string>
+
+    <!--自由导入-->
+    <string name="free_import">自由导入</string>
+    <string name="free_import_summary">开启后本地导入不再限制后缀，不支持的文件按纯文本打开</string>
 </resources>

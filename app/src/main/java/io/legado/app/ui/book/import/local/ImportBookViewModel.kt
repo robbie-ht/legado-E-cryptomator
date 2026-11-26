@@ -10,6 +10,7 @@ import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.delete
+import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.list
 import io.legado.app.utils.mapParallel
@@ -37,6 +38,10 @@ class ImportBookViewModel(application: Application) : BaseViewModel(application)
     var dataCallback: DataCallback? = null
     var dataFlowStart: (() -> Unit)? = null
     var filterKey: String? = null
+
+    /** 自由导入: 允许任意后缀 */
+    private val isFreeImport: Boolean
+        get() = context.getPrefBoolean(PreferKey.freeImport)
     val dataFlow = callbackFlow<List<ImportBook>> {
 
         val list = Collections.synchronizedList(ArrayList<ImportBook>())
@@ -122,6 +127,8 @@ class ImportBookViewModel(application: Application) : BaseViewModel(application)
                 when {
                     item.name.startsWith(".") -> false
                     item.isDir -> true
+                    // 自由导入: 不限制后缀, 不支持的类型按纯文本打开
+                    isFreeImport -> true
                     else -> item.name.matches(bookFileRegex) || item.name.matches(archiveFileRegex)
                 }
             }
@@ -147,7 +154,8 @@ class ImportBookViewModel(application: Application) : BaseViewModel(application)
                     if (it.isDir) {
                         n++
                         channel.trySend(it)
-                    } else if (it.name.matches(bookFileRegex)
+                    } else if (isFreeImport
+                        || it.name.matches(bookFileRegex)
                         || it.name.matches(archiveFileRegex)
                     ) {
                         list.add(it)
