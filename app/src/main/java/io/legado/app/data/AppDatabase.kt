@@ -9,6 +9,9 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import io.legado.app.vault.VaultSession
+import io.legado.app.vault.VaultStorage
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import io.legado.app.data.dao.BookChapterDao
 import io.legado.app.data.dao.BookDao
 import io.legado.app.data.dao.BookGroupDao
@@ -57,14 +60,67 @@ import org.intellij.lang.annotations.Language
 import splitties.init.appCtx
 import java.util.Locale
 
-val appDb by lazy {
-    Room.databaseBuilder(appCtx, AppDatabase::class.java, AppDatabase.DATABASE_NAME)
-        .fallbackToDestructiveMigrationFrom(false, 1, 2, 3, 4, 5, 6, 7, 8, 9)
-        .addMigrations(*DatabaseMigrations.migrations)
-        .allowMainThreadQueries()
-        .addCallback(AppDatabase.dbCallback)
-        .build()
+/**
+ * 数据库统一入口.
+ *
+ * 数据库文件放在保险库目录 ([VaultStorage.databaseFile]) 内, 使用 SQLCipher 加密,
+ * 口令由用户密码派生出的主密钥再次派生. 未解锁时访问会抛出 [io.legado.app.vault.VaultLockedException],
+ * 因此未输入密码时书架中的书名/封面/正文在磁盘上均为密文.
+ */
+object AppDbHolder {
+
+    @Volatile
+    private var database: AppDatabase? = null
+
+    val isOpen: Boolean get() = database != null
+
+    fun get(): AppDatabase =
+        database ?: throw io.legado.app.vault.VaultLockedException()
+
+    @Synchronized
+    fun open(): AppDatabase {
+        database?.let { return it }
+        loadSqlCipher()
+        val passphrase = VaultSession.dbPassphrase()
+        VaultStorage.dataDir.mkdirs()
+        val factory = SupportOpenHelperFactory(passphrase, null, true)
+        @Suppress("DEPRECATION")
+        val db = Room.databaseBuilder(
+            io.legado.app.vault.VaultContext.wrap(appCtx),
+            AppDatabase::class.java,
+            VaultStorage.DATABASE_FILE_NAME
+        )
+            .openHelperFactory(factory)
+            .fallbackToDestructiveMigrationFrom(false, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+            .addMigrations(*DatabaseMigrations.migrations)
+            .allowMainThreadQueries()
+            .addCallback(AppDatabase.dbCallback)
+            .build()
+        // 立即打开以校验口令
+        db.openHelper.writableDatabase
+        database = db
+        return db
+    }
+
+    private var sqlCipherLoaded = false
+
+    /** 加载 SQLCipher 的 native 库, 只需一次 */
+    private fun loadSqlCipher() {
+        if (sqlCipherLoaded) return
+        System.loadLibrary("sqlcipher")
+        sqlCipherLoaded = true
+    }
+
+    @Synchronized
+    fun close() {
+        val db = database ?: return
+        database = null
+        kotlin.runCatching { db.close() }
+    }
 }
+
+val appDb: AppDatabase
+    get() = AppDbHolder.get()
 
 @Database(
     version = 89,

@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:paddingStart="32dp"
+    android:paddingEnd="32dp">
+
+    <ImageView
+        android:id="@+id/iv_lock"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:contentDescription="@string/vault_unlock"
+        android:src="@drawable/ic_lock_outline"
+        android:tint="?attr/colorPrimary"
+        app:layout_constraintBottom_toTopOf="@+id/tv_vault_title"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_chainStyle="packed"
+        tools:ignore="UseAppTint" />
+
+    <TextView
+        android:id="@+id/tv_vault_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/vault_unlock"
+        android:textColor="?android:attr/textColorPrimary"
+        android:textSize="22sp"
+        app:layout_constraintBottom_toTopOf="@+id/tv_vault_desc"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/iv_lock" />
+
+    <TextView
+        android:id="@+id/tv_vault_desc"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:text="@string/vault_unlock_desc"
+        android:textColor="?android:attr/textColorSecondary"
+        android:textSize="13sp"
+        app:layout_constraintBottom_toTopOf="@+id/et_vault_password"
+        app:layout_constraintTop_toBottomOf="@+id/tv_vault_title" />
+
+    <EditText
+        android:id="@+id/et_vault_password"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:autofillHints=""
+        android:hint="@string/vault_password"
+        android:importantForAutofill="no"
+        android:inputType="textPassword|textNoSuggestions"
+        android:maxLines="1"
+        android:singleLine="true"
+        android:textColor="?android:attr/textColorPrimary"
+        app:layout_constraintBottom_toTopOf="@+id/et_vault_password_confirm"
+        app:layout_constraintTop_toBottomOf="@+id/tv_vault_desc" />
+
+    <EditText
+        android:id="@+id/et_vault_password_confirm"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:autofillHints=""
+        android:hint="@string/vault_password_confirm"
+        android:importantForAutofill="no"
+        android:inputType="textPassword|textNoSuggestions"
+        android:maxLines="1"
+        android:singleLine="true"
+        android:textColor="?android:attr/textColorPrimary"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@+id/tv_vault_hint"
+        app:layout_constraintTop_toBottomOf="@+id/et_vault_password" />
+
+    <TextView
+        android:id="@+id/tv_vault_hint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:minHeight="20dp"
+        android:textColor="@color/error"
+        android:textSize="13sp"
+        app:layout_constraintBottom_toTopOf="@+id/btn_vault_unlock"
+        app:layout_constraintTop_toBottomOf="@+id/et_vault_password_confirm" />
+
+    <Button
+        android:id="@+id/btn_vault_unlock"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/vault_unlock_action"
+        android:textSize="15sp"
+        app:layout_constraintBottom_toTopOf="@+id/tv_vault_reset"
+        app:layout_constraintTop_toBottomOf="@+id/tv_vault_hint" />
+
+    <TextView
+        android:id="@+id/tv_vault_reset"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="center"
+        android:padding="8dp"
+        android:text="@string/vault_reset"
+        android:textColor="?android:attr/textColorSecondary"
+        android:textSize="13sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/btn_vault_unlock" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

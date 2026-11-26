@@ -77,6 +77,12 @@ abstract class BaseActivity<VB : ViewBinding>(
 
     @SuppressLint("ObsoleteSdkInt")
     override fun onCreate(savedInstanceState: Bundle?) {
+        //未解锁时不允许进入任何界面, 避免书名/封面等数据泄露
+        if (io.legado.app.vault.VaultGate.needUnlock(this)) {
+            super.onCreate(savedInstanceState)
+            io.legado.app.vault.VaultGate.redirectToUnlock(this)
+            return
+        }
         window.decorView.disableAutoFill()
         initTheme()
         super.onCreate(savedInstanceState)
@@ -92,6 +98,16 @@ abstract class BaseActivity<VB : ViewBinding>(
         }
         observeLiveBus()
         onActivityCreated(savedInstanceState)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        //从后台回到前台时也要重新解锁
+        if (io.legado.app.vault.VaultGate.needUnlock(this)) {
+            //先遮住界面再切到解锁页, 避免书架内容闪现
+            window.decorView.visibility = View.INVISIBLE
+            io.legado.app.vault.VaultGate.redirectToUnlock(this)
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.O)

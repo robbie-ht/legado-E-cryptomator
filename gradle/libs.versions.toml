@@ -71,6 +71,7 @@ activity = "1.11.0"
 lifecycle = "2.9.4"
 #noinspection GradleDependency
 room = "2.7.1"
+sqlcipher = "4.9.0"
 #noinspection GradleDependency
 recyclerview = "1.4.0"
 #noinspection GradleDependency
@@ -149,6 +150,8 @@ quick-chinese-transfer-core = { module = "com.github.liuyueyi.quick-chinese-tran
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+#SQLCipher for Android, 数据库加密
+sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 
 glide-glide = { module = "com.github.bumptech.glide:glide", version.ref = "glide" }

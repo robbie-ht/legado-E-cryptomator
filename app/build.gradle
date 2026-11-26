@@ -230,6 +230,8 @@ dependencies {
     //room sql语句不高亮解决方法https://issuetracker.google.com/issues/234612964#comment6
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
+    //数据库加密(SQLCipher), 书架元数据与正文缓存全部加密落盘
+    implementation(libs.sqlcipher.android)
     //kapt("androidx.room:room-compiler:$room_version")
     ksp(libs.room.compiler)
     androidTestImplementation(libs.room.testing)

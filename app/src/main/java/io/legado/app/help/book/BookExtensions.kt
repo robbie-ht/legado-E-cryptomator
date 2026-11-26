@@ -113,6 +113,15 @@ fun Book.getLocalUri(): Uri {
     if (!isLocal) {
         throw NoStackTraceException("不是本地书籍")
     }
+    // 保险库中的书: 解密到临时目录后返回文件 Uri
+    if (io.legado.app.vault.VaultStorage.isVaultUrl(bookUrl)) {
+        val file = io.legado.app.vault.VaultStorage.materialize(
+            io.legado.app.vault.VaultSession.requireKey(),
+            bookUrl,
+            originName
+        )
+        return Uri.fromFile(file)
+    }
     var uri = localUriCache[bookUrl]
     if (uri != null) {
         return uri

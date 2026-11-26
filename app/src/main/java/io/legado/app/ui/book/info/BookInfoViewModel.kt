@@ -462,6 +462,8 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 }
                 book.save()
                 SourceCallBack.callBackBook(SourceCallBack.ADD_BOOK_SHELF, bookSource, book)
+                // 加入书架后把正文下载下来, 加密保存到程序数据目录(保险库)
+                cacheContentToVault(book)
             }
             chapterListData.value?.let {
                 appDb.bookChapterDao.insert(*it.toTypedArray())
@@ -469,6 +471,23 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             inBookshelf = true
         }.onSuccess {
             success?.invoke()
+        }
+    }
+
+    /**
+     * 加入书架后自动缓存全本正文, 正文会在下载过程中加密写入保险库
+     */
+    private fun cacheContentToVault(book: Book) {
+        if (book.isLocal) return
+        val chapterCount = chapterListData.value?.size ?: book.totalChapterNum
+        if (chapterCount <= 0) return
+        kotlin.runCatching {
+            io.legado.app.model.CacheBook.start(
+                context,
+                book,
+                0,
+                chapterCount - 1
+            )
         }
     }
 

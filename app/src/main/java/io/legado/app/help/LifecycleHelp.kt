@@ -3,8 +3,12 @@ package io.legado.app.help
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import io.legado.app.base.BaseService
+import io.legado.app.ui.vault.UnlockActivity
 import io.legado.app.utils.LogUtils
+import io.legado.app.vault.VaultSession
 import java.lang.ref.WeakReference
 
 /**
@@ -16,6 +20,15 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
     private const val TAG = "LifecycleHelp"
 
     private val activities: MutableList<WeakReference<Activity>> = arrayListOf()
+
+    /** 处于 started 状态的界面数量, 用于判断 App 是否退到后台 */
+    private var startedCount = 0
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val lockRunnable = Runnable {
+        if (startedCount <= 0) {
+            VaultSession.onAppToBackground()
+        }
+    }
     private val services: MutableList<WeakReference<BaseService>> = arrayListOf()
     private var appFinishedListener: (() -> Unit)? = null
 
@@ -26,6 +39,8 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
     /**
      * 判断指定Activity是否存在
      */
+    fun hasRunningServices(): Boolean = services.isNotEmpty()
+
     fun isExistActivity(activityClass: Class<*>): Boolean {
         activities.forEach { item ->
             if (item.get()?.javaClass == activityClass) {
@@ -67,6 +82,8 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
 
     override fun onActivityStarted(activity: Activity) {
         LogUtils.d(TAG, "${activity::class.simpleName} onStart")
+        startedCount++
+        mainHandler.removeCallbacks(lockRunnable)
     }
 
     override fun onActivityDestroyed(activity: Activity) {
@@ -88,6 +105,24 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
 
     override fun onActivityStopped(activity: Activity) {
         LogUtils.d(TAG, "${activity::class.simpleName} onStop")
+        startedCount = (startedCount - 1).coerceAtLeast(0)
+        if (startedCount == 0) {
+            // 解锁页不算退到后台
+            val onlyUnlock = activities.none {
+                it.get()?.let { a -> a !is UnlockActivity && !a.isFinishing } == true
+            }
+            if (!onlyUnlock && services.isEmpty()) {
+                mainHandler.removeCallbacks(lockRunnable)
+                mainHandler.postDelayed(lockRunnable, 500L)
+            } else if (onlyUnlock) {
+                VaultSession.markUiLocked()
+            } else {
+                // 后台服务(朗读等)还在跑, 先锁界面, 密钥延后释放
+                VaultSession.markUiLocked()
+                mainHandler.removeCallbacks(lockRunnable)
+                mainHandler.postDelayed(lockRunnable, 500L)
+            }
+        }
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
@@ -117,5 +152,8 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
 
     private fun onAppFinished() {
         appFinishedListener?.invoke()
+        if (!VaultSession.uiUnlocked) {
+            VaultSession.onAllServicesStopped()
+        }
     }
 }

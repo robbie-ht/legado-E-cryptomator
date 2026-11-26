@@ -29,6 +29,8 @@ import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
+import io.legado.app.vault.VaultSession
+import io.legado.app.vault.VaultStorage
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -63,31 +65,24 @@ object BookHelp {
     val cachePath = FileUtils.getPath(downloadDir, cacheFolderName)
 
     fun clearCache() {
+        VaultStorage.deleteAllChapters()
         FileUtils.delete(
             FileUtils.getPath(downloadDir, cacheFolderName)
         )
     }
 
     fun clearCache(book: Book) {
-        val filePath = FileUtils.getPath(downloadDir, cacheFolderName, book.getFolderName())
-        FileUtils.delete(filePath)
+        VaultStorage.deleteChapters(book)
+        FileUtils.delete(
+            FileUtils.getPath(downloadDir, cacheFolderName, book.getFolderName())
+        )
     }
 
+    /**
+     * 缓存按 bookUrl 的摘要存放, 书名变化不影响, 无需搬目录
+     */
     fun updateCacheFolder(oldBook: Book, newBook: Book) {
-        val oldFolderName = oldBook.getFolderNameNoCache()
-        val newFolderName = newBook.getFolderNameNoCache()
-        if (oldFolderName == newFolderName) return
-        val oldFolderPath = FileUtils.getPath(
-            downloadDir,
-            cacheFolderName,
-            oldFolderName
-        )
-        val newFolderPath = FileUtils.getPath(
-            downloadDir,
-            cacheFolderName,
-            newFolderName
-        )
-        FileUtils.move(oldFolderPath, newFolderPath)
+        // no-op
     }
 
     /**
@@ -179,13 +174,13 @@ object BookHelp {
         content: String
     ) {
         if (content.isEmpty()) return
-        //保存文本
-        FileUtils.createFileIfNotExist(
-            downloadDir,
-            cacheFolderName,
-            book.getFolderName(),
+        //正文加密保存到程序数据目录(保险库)
+        VaultStorage.writeChapter(
+            VaultSession.requireKey(),
+            book,
             bookChapter.getFileName(),
-        ).writeText(content)
+            content
+        )
         if (book.isOnLineTxt && AppConfig.tocCountWords) {
             val wordCount = StringUtils.wordCountFormat(content.length)
             bookChapter.wordCount = wordCount
@@ -326,12 +321,12 @@ object BookHelp {
         if (book.isLocalTxt) {
             return fileNames
         }
-        FileUtils.createFolderIfNotExist(
-            downloadDir,
-            subDirs = arrayOf(cacheFolderName, book.getFolderName())
-        ).list()?.let {
-            fileNames.addAll(it)
-        }
+        fileNames.addAll(VaultStorage.listChapterFiles(book))
+        FileUtils.getPath(downloadDir, cacheFolderName, book.getFolderName())
+            .let { File(it) }
+            .list()?.let {
+                fileNames.addAll(it)
+            }
         return fileNames
     }
 
@@ -344,7 +339,8 @@ object BookHelp {
         ) {
             true
         } else {
-            downloadDir.exists(
+            VaultStorage.hasChapter(book, bookChapter.getFileName())
+                || downloadDir.exists(
                 cacheFolderName,
                 book.getFolderName(),
                 bookChapter.getFileName()
@@ -398,6 +394,12 @@ object BookHelp {
      * 读取章节内容
      */
     fun getContent(book: Book, bookChapter: BookChapter): String? {
+        VaultStorage.readChapter(
+            VaultSession.requireKey(),
+            book,
+            bookChapter.getFileName()
+        )?.let { return it }
+        // 兼容旧版本遗留的明文缓存: 读到后立即加密并删除明文
         val file = downloadDir.getFile(
             cacheFolderName,
             book.getFolderName(),
@@ -405,9 +407,11 @@ object BookHelp {
         )
         if (file.exists()) {
             val string = file.readText()
+            file.delete()
             if (string.isEmpty()) {
                 return null
             }
+            saveText(book, bookChapter, string)
             return string
         }
         if (book.isLocal) {
@@ -424,6 +428,7 @@ object BookHelp {
      * 删除章节内容
      */
     fun delContent(book: Book, bookChapter: BookChapter) {
+        VaultStorage.deleteChapter(book, bookChapter.getFileName())
         FileUtils.createFileIfNotExist(
             downloadDir,
             cacheFolderName,
@@ -439,21 +444,10 @@ object BookHelp {
         val fileName = bookChapter.getFileName("nr")
         val contentProcessor = ContentProcessor.get(book)
         if (removeSameTitle) {
-            val path = FileUtils.getPath(
-                downloadDir,
-                cacheFolderName,
-                book.getFolderName(),
-                fileName
-            )
             contentProcessor.removeSameTitleCache.remove(fileName)
-            File(path).delete()
+            VaultStorage.deleteChapter(book, fileName)
         } else {
-            FileUtils.createFileIfNotExist(
-                downloadDir,
-                cacheFolderName,
-                book.getFolderName(),
-                fileName
-            )
+            VaultStorage.writeChapter(VaultSession.requireKey(), book, fileName, "1")
             contentProcessor.removeSameTitleCache.add(fileName)
         }
     }
@@ -462,13 +456,7 @@ object BookHelp {
      * 获取是否去除重复标题
      */
     fun removeSameTitle(book: Book, bookChapter: BookChapter): Boolean {
-        val path = FileUtils.getPath(
-            downloadDir,
-            cacheFolderName,
-            book.getFolderName(),
-            bookChapter.getFileName("nr")
-        )
-        return !File(path).exists()
+        return !VaultStorage.hasChapter(book, bookChapter.getFileName("nr"))
     }
 
     /**

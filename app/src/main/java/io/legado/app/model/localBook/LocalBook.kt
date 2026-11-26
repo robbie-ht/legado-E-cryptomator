@@ -49,6 +49,8 @@ import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.printOnDebug
+import io.legado.app.vault.VaultSession
+import io.legado.app.vault.VaultStorage
 import kotlinx.coroutines.runBlocking
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
@@ -103,6 +105,9 @@ object LocalBook {
     }
 
     fun getLastModified(book: Book): Result<Long> {
+        if (VaultStorage.isVaultUrl(book.bookUrl)) {
+            return kotlin.runCatching { VaultStorage.bookLastModified(book.bookUrl) }
+        }
         return kotlin.runCatching {
             val uri = book.bookUrl.toUri()
             if (uri.isContentScheme()) {
@@ -217,8 +222,9 @@ object LocalBook {
     }
 
     private fun getCoverPath(bookUrl: String): String {
+        // 封面属于书架内容, 存放在解密工作目录, 锁定时会被清空
         return FileUtils.getPath(
-            appCtx.externalFiles,
+            VaultStorage.workDir(),
             "covers",
             "${MD5Utils.md5Encode16(bookUrl)}.jpg"
         )
@@ -232,20 +238,45 @@ object LocalBook {
         fileName: String,
         source: BaseSource? = null,
     ): Book {
-        return importFile(saveBookFile(str, fileName, source))
+        return importVaultFile(openWebFileStream(str, source), fileName, uniqueKey = "web:$str")
+    }
+
+    /**
+     * 从在线地址/DataUrl 打开输入流
+     */
+    suspend fun openWebFileStream(str: String, source: BaseSource? = null): InputStream {
+        return when {
+            str.isAbsUrl() -> AnalyzeUrl(
+                str, source = source, callTimeout = 0,
+                coroutineContext = currentCoroutineContext()
+            ).getInputStreamAwait()
+
+            str.isDataUrl() -> ByteArrayInputStream(
+                Base64.decode(str.substringAfter("base64,"), Base64.DEFAULT)
+            )
+
+            else -> throw NoStackTraceException("在线导入书籍支持http/https/DataURL")
+        }
     }
 
     /**
      * 导入本地文件
      */
     fun importFile(uri: Uri): Book {
-        val bookUrl: String
+        var bookUrl: String
         //updateTime变量不要修改,否则会导致读取不到缓存
         val (fileName, _, _, updateTime, _) = FileDoc.fromUri(uri, false).apply {
             if (size == 0L) throw EmptyFileException("Unexpected empty File")
 
             bookUrl = toString()
         }
+        // 把原始文件加密保存到程序数据目录(保险库), 书架上只保留 vault:// 记录
+        val sourceUrl = bookUrl
+        bookUrl = VaultStorage.storeLocalBook(
+            VaultSession.requireKey(),
+            uri,
+            sourceUrl
+        )
         var book = appDb.bookDao.getBook(bookUrl)
         if (book == null) {
             val nameAuthor = analyzeNameAuthor(fileName)
@@ -255,7 +286,7 @@ object LocalBook {
                 name = nameAuthor.first,
                 author = nameAuthor.second,
                 originName = fileName,
-                latestChapterTime = updateTime,
+                latestChapterTime = VaultStorage.bookLastModified(bookUrl),
                 order = appDb.bookDao.minOrder - 1
             )
             upBookInfo(book)
@@ -280,6 +311,43 @@ object LocalBook {
         }
     }
 
+    /**
+     * 直接把输入流加密存进保险库并入库(不产生任何明文落盘)
+     * @param uniqueKey 稳定键, 用同一本书的更新
+     */
+    fun importVaultFile(
+        inputStream: InputStream,
+        fileName: String,
+        uniqueKey: String = fileName
+    ): Book {
+        val bookUrl = VaultStorage.storeLocalBook(
+            VaultSession.requireKey(),
+            inputStream,
+            uniqueKey
+        )
+        var book = appDb.bookDao.getBook(bookUrl)
+        if (book == null) {
+            val nameAuthor = analyzeNameAuthor(fileName)
+            book = Book(
+                type = BookType.text or BookType.local,
+                bookUrl = bookUrl,
+                name = nameAuthor.first,
+                author = nameAuthor.second,
+                originName = fileName,
+                latestChapterTime = VaultStorage.bookLastModified(bookUrl),
+                order = appDb.bookDao.minOrder - 1
+            )
+            upBookInfo(book)
+            appDb.bookDao.insert(book)
+        } else {
+            deleteBook(book, false)
+            upBookInfo(book)
+            book.latestChapterTime = 0
+            appDb.bookChapterDao.delByBook(bookUrl)
+        }
+        return book
+    }
+
     /* 导入压缩包内的书籍 */
     fun importArchiveFile(
         archiveFileUri: Uri,
@@ -292,13 +360,16 @@ object LocalBook {
             throw NoStackTraceException(appCtx.getString(R.string.unsupport_archivefile_entry))
         }
         return files.map {
-            saveBookFile(FileInputStream(it), saveFileName ?: it.name).let { uri ->
-                importFile(uri).apply {
-                    //附加压缩包名称 以便解压文件被删后再解压
-                    origin = "${BookType.localTag}::${archiveFileDoc.name}"
-                    addType(BookType.archive)
-                    save()
-                }
+            val entryName = saveFileName ?: it.name
+            importVaultFile(
+                FileInputStream(it),
+                entryName,
+                uniqueKey = "archive:${archiveFileDoc.name}:$entryName"
+            ).apply {
+                //附加压缩包名称 以便解压文件被删后再解压
+                origin = "${BookType.localTag}::${archiveFileDoc.name}"
+                addType(BookType.archive)
+                save()
             }
         }
     }
@@ -339,6 +410,17 @@ object LocalBook {
         if (errorCount == uris.size) {
             throw NoStackTraceException("ImportFiles Error:\nAll input files occur error")
         }
+    }
+
+    /**
+     * 压缩包临时落地到工作目录(锁定时会被清除)
+     */
+    private fun materializeArchive(inputStream: InputStream, fileName: String): Uri {
+        val dir = File(VaultStorage.workDir(), "archive")
+        dir.mkdirs()
+        val file = File(dir, fileName)
+        FileOutputStream(file).use { out -> inputStream.use { it.copyTo(out) } }
+        return Uri.fromFile(file)
     }
 
     /**
@@ -389,6 +471,9 @@ object LocalBook {
             BookHelp.clearCache(book)
             if (!book.coverUrl.isNullOrEmpty()) {
                 FileUtils.delete(book.coverUrl!!)
+            }
+            if (VaultStorage.isVaultUrl(book.bookUrl)) {
+                VaultStorage.deleteBook(book.bookUrl)
             }
             if (deleteOriginal) {
                 if (book.bookUrl.isContentScheme()) {
@@ -503,8 +588,8 @@ object LocalBook {
             }
             inputStream.use {
                 if (localBook.isArchive) {
-                    // 压缩包
-                    val archiveUri = saveBookFile(it, localBook.archiveName)
+                    // 压缩包: 先落到保险库的临时解压区, 解压出的单本再加密入库
+                    val archiveUri = materializeArchive(it, localBook.archiveName)
                     val newBook = importArchiveFile(archiveUri, localBook.originName) { name ->
                         name.contains(localBook.originName)
                     }.first()
@@ -512,8 +597,8 @@ object LocalBook {
                     localBook.bookUrl = newBook.bookUrl
                 } else {
                     // txt epub pdf umd
-                    val fileUri = saveBookFile(it, localBook.originName)
-                    localBook.bookUrl = FileDoc.fromUri(fileUri, false).toString()
+                    val newBook = importVaultFile(it, localBook.originName, "webdav:${webDavUrl}")
+                    localBook.bookUrl = newBook.bookUrl
                     localBook.save()
                 }
             }

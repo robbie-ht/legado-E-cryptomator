@@ -32,16 +32,21 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme.Light"
         tools:ignore="AllowBackup,GoogleAppIndexingWarning,UnusedAttribute">
-        <!-- 主入口 -->
+        <!-- 主入口: 必须先输入密码解锁 -->
         <activity
-            android:name=".ui.welcome.WelcomeActivity"
-            android:exported="true">
+            android:name=".ui.vault.UnlockActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".ui.welcome.WelcomeActivity"
+            android:exported="true" />
         <!-- 图标1 -->
         <activity
             android:name=".ui.welcome.Launcher1"

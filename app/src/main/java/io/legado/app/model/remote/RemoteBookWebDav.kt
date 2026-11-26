@@ -57,12 +57,16 @@ class RemoteBookWebDav(
     }
 
     override suspend fun downloadRemoteBook(remoteBook: RemoteBook): Uri {
-        AppConfig.defaultBookTreeUri
-            ?: throw NoStackTraceException("没有设置书籍保存位置!")
         if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络不可用")
         val webdav = WebDav(remoteBook.path, authorization)
         return webdav.downloadInputStream().let { inputStream ->
-            LocalBook.saveBookFile(inputStream, remoteBook.filename)
+            // 直接加密存进保险库, 不在公共目录留明文
+            val book = LocalBook.importVaultFile(
+                inputStream,
+                remoteBook.filename,
+                uniqueKey = "webdav:${remoteBook.path}"
+            )
+            Uri.parse(book.bookUrl)
         }
     }
 

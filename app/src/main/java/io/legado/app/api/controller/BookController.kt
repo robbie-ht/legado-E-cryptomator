@@ -290,8 +290,11 @@ object BookController {
         val fileData = files["fileData"]
             ?: return returnData.setErrorMsg("fileData 不能为空")
         kotlin.runCatching {
-            val uri = LocalBook.saveBookFile(File(fileData).inputStream(), fileName)
-            LocalBook.importFile(uri)
+            LocalBook.importVaultFile(
+                File(fileData).inputStream(),
+                fileName,
+                uniqueKey = "upload:$fileName"
+            )
         }.onFailure {
             return when (it) {
                 is SecurityException -> returnData.setErrorMsg("需重新设置书籍保存位置!")
