@@ -44,7 +44,33 @@ object VaultSession {
 
     private var failedCount = 0
 
+    /** 用户主动跳去系统文件选择器的宽限期(毫秒时间戳) */
+    @Volatile
+    private var externalGraceUntil = 0L
+
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
+
+    /**
+     * 用户在我们 App 内点了"选择文件/目录", 会短暂离开到系统选择器。
+     * 这段离开不是"退到后台", 给一个宽限期, 返回后不必重新输密码。
+     * 宽限只在本次跳转有效, 且屏幕熄灭会立即作废。
+     */
+    fun grantExternalGrace(millis: Long = DEFAULT_EXTERNAL_GRACE) {
+        externalGraceUntil = System.currentTimeMillis() + millis
+    }
+
+    fun hasExternalGrace(): Boolean =
+        externalGraceUntil > 0 && System.currentTimeMillis() < externalGraceUntil
+
+    /** 宽限剩余时间(毫秒), 已失效返回 0 */
+    fun externalGraceRemain(): Long =
+        (externalGraceUntil - System.currentTimeMillis()).coerceAtLeast(0)
+
+    fun consumeExternalGrace() {
+        externalGraceUntil = 0L
+    }
+
+    private const val DEFAULT_EXTERNAL_GRACE = 120_000L
 
     fun hasVault(): Boolean = VaultStorage.exists()
 
@@ -141,6 +167,7 @@ object VaultSession {
     @Synchronized
     fun lock(wipeCache: Boolean = true) {
         uiUnlocked = false
+        externalGraceUntil = 0L
         kotlin.runCatching { AppDbHolder.close() }
         masterKey?.fill(0)
         masterKey = null
@@ -157,6 +184,8 @@ object VaultSession {
 
     /** 退到后台: 清掉界面状态; 没有后台服务时连密钥一起清掉 */
     fun onAppToBackground() {
+        // 用户可能还在系统文件选择器里选书, 宽限期内不锁
+        if (hasExternalGrace()) return
         uiUnlocked = false
         // Web 服务会把书架内容直接暴露在局域网, 退到后台立即关闭
         kotlin.runCatching {

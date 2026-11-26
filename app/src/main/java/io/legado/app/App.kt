@@ -78,6 +78,7 @@ class App : Application() {
             ThreadUtils.setThreadAssertsDisabledForTesting(true)
         }
         oldConfig = Configuration(resources.configuration)
+        registerScreenLockReceiver()
         applyDayNightInit(this)
         registerActivityLifecycleCallbacks(LifecycleHelp)
         defaultSharedPreferences.registerOnSharedPreferenceChangeListener(AppConfig)
@@ -142,6 +143,28 @@ class App : Application() {
                 if (AppConfig.syncBookProgress) {
                     AppWebDav.downloadAllBookProgress()
                 }
+            }
+        }
+    }
+
+    /**
+     * 屏幕熄灭立即锁定, 避免"刚从系统选择器回来"的宽限期被他人利用
+     */
+    private fun registerScreenLockReceiver() {
+        kotlin.runCatching {
+            androidx.core.content.ContextCompat.registerReceiver(
+                this,
+                screenLockReceiver,
+                android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF),
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        }
+    }
+
+    private val screenLockReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: android.content.Intent?) {
+            if (intent?.action == android.content.Intent.ACTION_SCREEN_OFF) {
+                kotlin.runCatching { VaultSession.lock(wipeCache = true) }
             }
         }
     }

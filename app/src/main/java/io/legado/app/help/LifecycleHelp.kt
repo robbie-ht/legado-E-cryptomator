@@ -82,8 +82,12 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
 
     override fun onActivityStarted(activity: Activity) {
         LogUtils.d(TAG, "${activity::class.simpleName} onStart")
-        startedCount++
         mainHandler.removeCallbacks(lockRunnable)
+        // 从外部选择器回来了, 宽限一次性作废, 之后再退到后台立即锁定
+        if (startedCount == 0) {
+            VaultSession.consumeExternalGrace()
+        }
+        startedCount++
     }
 
     override fun onActivityDestroyed(activity: Activity) {
@@ -107,6 +111,14 @@ object LifecycleHelp : Application.ActivityLifecycleCallbacks {
         LogUtils.d(TAG, "${activity::class.simpleName} onStop")
         startedCount = (startedCount - 1).coerceAtLeast(0)
         if (startedCount == 0) {
+            // 用户主动去系统文件选择器选书/选目录: 短暂离开, 先不锁,
+            // 等宽限期结束还没回来再锁
+            if (VaultSession.hasExternalGrace()) {
+                LogUtils.d(TAG, "外部选择器宽限期内, 延后锁定")
+                mainHandler.removeCallbacks(lockRunnable)
+                mainHandler.postDelayed(lockRunnable, VaultSession.externalGraceRemain() + 500L)
+                return
+            }
             // 解锁页不算退到后台
             val onlyUnlock = activities.none {
                 it.get()?.let { a -> a !is UnlockActivity && !a.isFinishing } == true

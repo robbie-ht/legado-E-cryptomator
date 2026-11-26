@@ -16,6 +16,7 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import io.legado.app.vault.VaultSession
+import io.legado.app.vault.VaultGate
 import io.legado.app.vault.VaultStorage
 import io.legado.app.vault.startVaultMaintenance
 import kotlinx.coroutines.Dispatchers.IO
@@ -94,7 +95,13 @@ class UnlockActivity : BaseActivity<ActivityUnlockBinding>() {
                 binding.tvVaultHint.text = ""
                 (application as? io.legado.app.App)?.initDataLayer()
                 startVaultMaintenance(this@UnlockActivity)
-                startActivity<WelcomeActivity>()
+                // 从"分享/打开方式"进来时, 解锁后继续原来的导入流程
+                val pendingIntent = VaultGate.takePendingExternalIntent()
+                if (pendingIntent != null) {
+                    startActivity(pendingIntent)
+                } else {
+                    startActivity<WelcomeActivity>()
+                }
                 finish()
             } else {
                 val message = result.exceptionOrNull()?.localizedMessage

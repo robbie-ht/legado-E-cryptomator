@@ -104,6 +104,7 @@ class HandleFileActivity :
             items(selectList) { _, item, _ ->
                 when (item.value) {
                     HandleFileContract.DIR -> kotlin.runCatching {
+                        io.legado.app.vault.VaultSession.grantExternalGrace()
                         selectDocTree.launch()
                     }.onFailure {
                         AppLog.put(getString(R.string.open_sys_dir_picker_error), it, true)
@@ -116,6 +117,7 @@ class HandleFileActivity :
                     }
 
                     HandleFileContract.FILE -> kotlin.runCatching {
+                        io.legado.app.vault.VaultSession.grantExternalGrace()
                         selectDoc.launch(typesOfExtensions(allowExtensions))
                     }.onFailure {
                         AppLog.put(getString(R.string.open_sys_dir_picker_error), it, true)
@@ -129,6 +131,7 @@ class HandleFileActivity :
                     }
 
                     HandleFileContract.IMAGE -> {
+                        io.legado.app.vault.VaultSession.grantExternalGrace()
                         selectImage.launch()
                     }
 
