@@ -16,7 +16,7 @@
 ### 2. 数据全部加密落盘
 
 ```
-/data/data/io.legado.app.release/files/novelVault/
+/data/data/com.robbieht.legado.release/files/novelVault/
 ├── vault.info                  ← 唯一未加密文件：KDF 参数、盐、被口令包裹的主密钥（不含任何书名）
 └── vault/                      ← 加密文件夹
     ├── library.db              ← SQLCipher 加密数据库（书架、书源、阅读进度、替换规则）
@@ -78,7 +78,7 @@
 
 ### 与原版共存说明
 
-- 包名 `io.legado.app.release`，可与官方 Legado 同时安装，但**数据不互通**（官方是明文库，本版是加密库）
+- 包名 `com.robbieht.legado.release`，可与官方 Legado 同时安装，但**数据不互通**（官方是明文库，本版是加密库）
 - 从官方版升级过来时，首次创建保险库会把旧明文数据库/缓存**加密归档**到 `vault/legacy/` 后再删除明文，不会静默丢数据
 
 ---
@@ -87,8 +87,8 @@
 
 ```bash
 export ANDROID_HOME=/path/to/Android/Sdk
-./gradlew :app:assembleAppDebug      # 调试包 io.legado.app.debug
-./gradlew :app:assembleAppRelease    # 正式包 io.legado.app.release（需签名）
+./gradlew :app:assembleAppDebug      # 调试包 com.robbieht.legado.debug
+./gradlew :app:assembleAppRelease    # 正式包 com.robbieht.legado.release（需签名）
 ```
 
 签名构建（自行生成 keystore）：
