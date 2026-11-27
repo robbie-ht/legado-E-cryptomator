@@ -422,6 +422,10 @@
                 <data android:mimeType="application/azw3" />
                 <data android:mimeType="application/x-mobi8-ebook" />
                 <data android:mimeType="application/octet-stream" />
+                <!-- MHT / MHTML 单文件网页 -->
+                <data android:mimeType="multipart/related" />
+                <data android:mimeType="application/x-mht" />
+                <data android:mimeType="message/rfc822" />
             </intent-filter>
             <!-- Works when an app doesn't know the media type, e.g. Dropbox -->
             <intent-filter>

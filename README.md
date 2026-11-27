@@ -40,7 +40,9 @@
 
 ### 4. 导入即加密
 
-本地 TXT/EPUB/PDF/MOBI、压缩包内书籍、在线文件、WebDAV 下载，全部**流式加密**写入保险库，公共目录不留明文。
+本地 TXT/EPUB/PDF/MOBI/**MHT/MHTML**、压缩包内书籍、在线文件、WebDAV 下载，全部**流式加密**写入保险库，公共目录不留明文。
+
+**MHT/MHTML 支持**：单文件网页（MIME multipart，内含 HTML + base64/quoted-printable 编码的图片资源）导入时自动抽取正文转成纯文本，再按 TXT 目录规则分章，可直接阅读、朗读、缓存。
 
 ### 5. 书源加书架自动加密缓存
 

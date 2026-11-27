@@ -272,11 +272,25 @@ object LocalBook {
         }
         // 把原始文件加密保存到程序数据目录(保险库), 书架上只保留 vault:// 记录
         val sourceUrl = bookUrl
-        bookUrl = VaultStorage.storeLocalBook(
-            VaultSession.requireKey(),
-            uri,
-            sourceUrl
-        )
+        // mht/mhtml: 先抽成纯文本再入库, 之后按 txt 规则分章阅读
+        var fileNameInVault = fileName
+        if (MhtParser.isMht(fileName)) {
+            val text = MhtParser.toPlainText(
+                uri.inputStream(appCtx).getOrNull() ?: throw EmptyFileException(fileName)
+            )
+            fileNameInVault = fileName.substringBeforeLast('.') + ".txt"
+            bookUrl = VaultStorage.storeLocalBook(
+                VaultSession.requireKey(),
+                text.toByteArray(Charsets.UTF_8).inputStream(),
+                sourceUrl
+            )
+        } else {
+            bookUrl = VaultStorage.storeLocalBook(
+                VaultSession.requireKey(),
+                uri,
+                sourceUrl
+            )
+        }
         var book = appDb.bookDao.getBook(bookUrl)
         if (book == null) {
             val nameAuthor = analyzeNameAuthor(fileName)
@@ -285,7 +299,7 @@ object LocalBook {
                 bookUrl = bookUrl,
                 name = nameAuthor.first,
                 author = nameAuthor.second,
-                originName = fileName,
+                originName = fileNameInVault,
                 latestChapterTime = VaultStorage.bookLastModified(bookUrl),
                 order = appDb.bookDao.minOrder - 1
             )
@@ -320,11 +334,23 @@ object LocalBook {
         fileName: String,
         uniqueKey: String = fileName
     ): Book {
-        val bookUrl = VaultStorage.storeLocalBook(
-            VaultSession.requireKey(),
-            inputStream,
-            uniqueKey
-        )
+        // mht/mhtml: 抽成纯文本后入库, 之后按 txt 规则分章
+        val isMht = MhtParser.isMht(fileName)
+        val vaultFileName = if (isMht) fileName.substringBeforeLast('.') + ".txt" else fileName
+        val bookUrl = if (isMht) {
+            val text = MhtParser.toPlainText(inputStream)
+            VaultStorage.storeLocalBook(
+                VaultSession.requireKey(),
+                text.toByteArray(Charsets.UTF_8).inputStream(),
+                uniqueKey
+            )
+        } else {
+            VaultStorage.storeLocalBook(
+                VaultSession.requireKey(),
+                inputStream,
+                uniqueKey
+            )
+        }
         var book = appDb.bookDao.getBook(bookUrl)
         if (book == null) {
             val nameAuthor = analyzeNameAuthor(fileName)
@@ -333,7 +359,7 @@ object LocalBook {
                 bookUrl = bookUrl,
                 name = nameAuthor.first,
                 author = nameAuthor.second,
-                originName = fileName,
+                originName = vaultFileName,
                 latestChapterTime = VaultStorage.bookLastModified(bookUrl),
                 order = appDb.bookDao.minOrder - 1
             )
