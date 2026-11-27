@@ -498,7 +498,9 @@ object LocalBook {
             if (!book.coverUrl.isNullOrEmpty()) {
                 FileUtils.delete(book.coverUrl!!)
             }
-            if (VaultStorage.isVaultUrl(book.bookUrl)) {
+            // 保险库里的加密文件等同于"原始文件": 只有用户明确删除原始文件时才删,
+            // 否则重复导入/更新书籍时会把刚写入的文件删掉, 导致"书籍文件不存在"
+            if (deleteOriginal && VaultStorage.isVaultUrl(book.bookUrl)) {
                 VaultStorage.deleteBook(book.bookUrl)
             }
             if (deleteOriginal) {

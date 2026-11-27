@@ -128,7 +128,9 @@ object VaultStorage {
             return target
         }
         val src = bookFile(bookUrl)
-        if (!src.exists()) throw VaultException("书籍文件不存在")
+        if (!src.exists()) {
+            throw VaultException("书籍的加密文件不存在，可能已被删除，请重新导入这本书")
+        }
         target.parentFile?.mkdirs()
         val tmp = File(target.absolutePath + ".tmp")
         src.inputStream().use { input ->
