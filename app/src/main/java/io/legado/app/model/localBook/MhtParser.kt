@@ -29,7 +29,12 @@ object MhtParser {
     fun toPlainText(input: InputStream): String {
         val bytes = input.use { it.readBytes() }
         if (bytes.isEmpty()) return ""
-        val text = parseWithMime4j(bytes) ?: fallback(bytes)
+        val byMime4j = parseWithMime4j(bytes)
+        val text = byMime4j ?: run {
+            LogUtils.d(TAG, "mime4j failed, use fallback")
+            fallback(bytes)
+        }
+        LogUtils.d(TAG, "source=${if (byMime4j != null) "mime4j" else "fallback"}")
         // 正文内容不进日志, 只记长度
         LogUtils.d(TAG, "parsed ${text.length} chars")
         return text
@@ -114,8 +119,139 @@ object MhtParser {
 
     private fun fallback(bytes: ByteArray): String {
         val raw = String(bytes, Charsets.ISO_8859_1)
+        // 1) 明文 HTML 直接截取
         extractRawHtml(raw)?.let { return it }
+        // 2) 宽松 MIME: 不看 boundary, 直接按行找 text/html 分段并解码
+        extractHtmlByLooseMime(raw)?.let { return it }
+        // 3) 整个文件当作 quoted-printable 解一次, 再找 HTML
+        decodeQuotedPrintable(raw.toByteArray(Charsets.ISO_8859_1)).let { decoded ->
+            extractRawHtml(String(decoded, Charsets.ISO_8859_1))?.let { return it }
+        }
+        // 4) 最后兜底: 清洗成纯文本
         return htmlToText(cleanFallback(String(bytes, Charsets.UTF_8)))
+    }
+
+    /**
+     * 宽松 MIME 扫描: 逐行找 Content-Type: text/html 的分段头, 取其后的空行到
+     * 下一个 boundary / 文件结尾之间的内容, 按 Content-Transfer-Encoding 解码.
+     * 不依赖 boundary 参数解析, 兼容 header 折行、畸形分隔符等真实文件.
+     */
+    private fun extractHtmlByLooseMime(raw: String): String? {
+        val lines = raw.split("\n")
+        var i = 0
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("Content-Type:", true) && line.contains("text/html", true)) {
+                // 收集这一段头(含折行续行)
+                var cte: String? = null
+                var charset: String? = Regex("charset\\s*=\\s*[\"']?([\\w-]+)", RegexOption.IGNORE_CASE)
+                    .find(line)?.groupValues?.get(1)
+                var j = i + 1
+                var headerEnd = -1
+                while (j < lines.size) {
+                    val l = lines[j]
+                    val t = l.trim()
+                    if (t.isEmpty()) {
+                        headerEnd = j
+                        break
+                    }
+                    // 折行续行(以空白开头)
+                    if (l.isNotEmpty() && (l[0] == ' ' || l[0] == '\t')) {
+                        if (charset == null) {
+                            charset = Regex("charset\\s*=\\s*[\"']?([\\w-]+)", RegexOption.IGNORE_CASE)
+                                .find(t)?.groupValues?.get(1)
+                        }
+                        j++
+                        continue
+                    }
+                    if (t.startsWith("--")) break
+                    if (t.startsWith("Content-Transfer-Encoding:", true)) {
+                        cte = t.substringAfter(':').trim()
+                    } else if (charset == null && t.startsWith("Content-Type:", true)) {
+                        charset = Regex("charset\\s*=\\s*[\"']?([\\w-]+)", RegexOption.IGNORE_CASE)
+                            .find(t)?.groupValues?.get(1)
+                    }
+                    j++
+                }
+                if (headerEnd < 0) return null
+                // 取正文直到下一个分隔行
+                val bodySb = StringBuilder()
+                var k = headerEnd + 1
+                while (k < lines.size) {
+                    val l = lines[k]
+                    if (l.startsWith("--") || l.trim().startsWith("--")) {
+                        // 分隔行: --boundary 或 ------xxx
+                        if (l.contains("boundary", true) || l.startsWith("--") && l.length > 2) break
+                    }
+                    bodySb.append(l).append('\n')
+                    k++
+                }
+                val bodyBytes = bodySb.toString().toByteArray(Charsets.ISO_8859_1)
+                val decoded = when {
+                    cte.isNullOrBlank() -> bodyBytes
+                    cte.contains("base64", true) -> runCatching {
+                        java.util.Base64.getDecoder().decode(
+                            String(bodyBytes, Charsets.ISO_8859_1).replace(Regex("[^A-Za-z0-9+/=]"), "")
+                        )
+                    }.getOrDefault(bodyBytes)
+
+                    cte.contains("quoted-printable", true) -> decodeQuotedPrintable(bodyBytes)
+                    else -> bodyBytes
+                }
+                val text = decodeWithCharsetName(decoded, charset)
+                val out = htmlToText(text)
+                if (out.isNotBlank() && !looksLikeMime(out) && !looksLikeQpGarbage(out)) {
+                    return out
+                }
+            }
+            i++
+        }
+        return null
+    }
+
+    private fun decodeWithCharsetName(bytes: ByteArray, charsetName: String?): String {
+        val name = charsetName?.takeIf { it.isNotBlank() } ?: "utf-8"
+        return runCatching {
+            String(bytes, java.nio.charset.Charset.forName(name))
+        }.getOrElse { String(bytes, Charsets.UTF_8) }
+    }
+
+    /**
+     * 结果里大量 =XX 转义, 说明 quoted-printable 没解码
+     */
+    private fun looksLikeQpGarbage(text: String): Boolean {
+        val hits = Regex("=[0-9A-Fa-f]{2}").findAll(text).count()
+        return hits > 10 && hits * 4 > text.length / 6
+    }
+
+    private fun decodeQuotedPrintable(bytes: ByteArray): ByteArray {
+        val out = java.io.ByteArrayOutputStream(bytes.size)
+        var i = 0
+        while (i < bytes.size) {
+            val b = bytes[i].toInt() and 0xFF
+            if (b == '='.code) {
+                if (i + 2 < bytes.size && bytes[i + 1].toInt() == '\r'.code && bytes[i + 2].toInt() == '\n'.code) {
+                    i += 3
+                    continue
+                }
+                if (i + 1 < bytes.size && bytes[i + 1].toInt() == '\n'.code) {
+                    i += 2
+                    continue
+                }
+                if (i + 2 < bytes.size) {
+                    val hex = String(bytes, i + 1, 2, Charsets.US_ASCII)
+                    val value = hex.toIntOrNull(16)
+                    if (value != null) {
+                        out.write(value)
+                        i += 3
+                        continue
+                    }
+                }
+            }
+            out.write(b)
+            i++
+        }
+        return out.toByteArray()
     }
 
     private fun extractRawHtml(raw: String): String? {
