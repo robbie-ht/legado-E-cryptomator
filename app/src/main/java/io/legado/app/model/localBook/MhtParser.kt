@@ -27,14 +27,20 @@ object MhtParser {
         fileName.endsWith(".mht", true) || fileName.endsWith(".mhtml", true)
 
     fun toPlainText(input: InputStream): String {
+        val startAt = System.currentTimeMillis()
         val bytes = input.use { it.readBytes() }
         if (bytes.isEmpty()) return ""
-        val byMime4j = parseWithMime4j(bytes)
-        val text = byMime4j ?: run {
-            LogUtils.d(TAG, "mime4j failed, use fallback")
-            fallback(bytes)
+        var source = "mime4j"
+        var text = parseWithMime4j(bytes)
+        if (text == null) {
+            source = "fallback"
+            text = fallback(bytes)
         }
-        LogUtils.d(TAG, "source=${if (byMime4j != null) "mime4j" else "fallback"}")
+        LogUtils.d(
+            TAG,
+            "source=$source, size=${bytes.size / 1024}KB, " +
+                    "cost=${System.currentTimeMillis() - startAt}ms, chars=${text.length}"
+        )
         // 正文内容不进日志, 只记长度
         LogUtils.d(TAG, "parsed ${text.length} chars")
         return text
@@ -43,6 +49,7 @@ object MhtParser {
     // ---------------------------------------------------------------- mime4j
 
     private fun parseWithMime4j(bytes: ByteArray): String? {
+        val t0 = System.currentTimeMillis()
         val message = runCatching {
             val builder = DefaultMessageBuilder()
             builder.setMimeEntityConfig(MimeConfig.PERMISSIVE)
@@ -51,8 +58,15 @@ object MhtParser {
             LogUtils.d(TAG, "mime4j parse failed: ${it.message}")
             return null
         }
+        val mimeCost = System.currentTimeMillis() - t0
         val html = findHtml(message) ?: findPlainText(message) ?: return null
+        val t1 = System.currentTimeMillis()
         val text = htmlToText(html)
+        LogUtils.d(
+            TAG,
+            "mime4j=${mimeCost}ms, html2text=${System.currentTimeMillis() - t1}ms, " +
+                    "html=${html.length} chars"
+        )
         return text.takeIf { it.isNotBlank() && !looksLikeMime(it) }
     }
 
@@ -60,16 +74,18 @@ object MhtParser {
      * 递归找 text/html 分段, mime4j 已按 charset 解码内容
      */
     private fun findHtml(entity: Entity): String? {
-        val body = entity.body
-        if (body is Multipart) {
+        // 先看类型再取 body: 访问 body 会触发该分段解码,
+        // 一个网页快照常有上百个 CSS/图片分段, 逐个解码会非常慢
+        val mimeType = entity.mimeType.orEmpty()
+        if (mimeType.startsWith("multipart/", true)) {
+            val body = entity.body as? Multipart ?: return null
             body.bodyParts.forEach { part ->
                 findHtml(part)?.let { return it }
             }
             return null
         }
-        val mimeType = entity.mimeType ?: return null
         if (!mimeType.contains("text/html", true)) return null
-        return (body as? TextBody)?.let { readTextBody(it) }
+        return (entity.body as? TextBody)?.let { readTextBody(it) }
     }
 
     /**
@@ -103,19 +119,28 @@ object MhtParser {
     }
 
     private fun findPlainText(entity: Entity): String? {
-        val body = entity.body
-        if (body is Multipart) {
+        val mimeType = entity.mimeType.orEmpty()
+        if (mimeType.startsWith("multipart/", true)) {
+            val body = entity.body as? Multipart ?: return null
             body.bodyParts.forEach { part ->
                 findPlainText(part)?.let { return it }
             }
             return null
         }
-        val mimeType = entity.mimeType ?: return null
         if (!mimeType.contains("text/plain", true)) return null
-        return (body as? TextBody)?.let { readTextBody(it) }
+        return (entity.body as? TextBody)?.let { readTextBody(it) }
     }
 
     // ---------------------------------------------------------------- 兜底
+
+    /**
+     * 快速路径: 定位 text/html 分段 -> 按 Transfer-Encoding 解码 -> 转文本
+     */
+    private fun fastExtract(bytes: ByteArray): String? {
+        val raw = String(bytes, Charsets.ISO_8859_1)
+        extractRawHtml(raw)?.let { return it }
+        return extractHtmlByLooseMime(raw)
+    }
 
     private fun fallback(bytes: ByteArray): String {
         val raw = String(bytes, Charsets.ISO_8859_1)
@@ -137,6 +162,7 @@ object MhtParser {
      * 不依赖 boundary 参数解析, 兼容 header 折行、畸形分隔符等真实文件.
      */
     private fun extractHtmlByLooseMime(raw: String): String? {
+        val boundary = parseBoundaryFromHead(raw)
         val lines = raw.split("\n")
         var i = 0
         while (i < lines.size) {
@@ -179,9 +205,11 @@ object MhtParser {
                 var k = headerEnd + 1
                 while (k < lines.size) {
                     val l = lines[k]
-                    if (l.startsWith("--") || l.trim().startsWith("--")) {
-                        // 分隔行: --boundary 或 ------xxx
-                        if (l.contains("boundary", true) || l.startsWith("--") && l.length > 2) break
+                    val t = l.trimStart()
+                    if (t.startsWith("--")) {
+                        // 分隔行: "--" + boundary, 或者没有 boundary 时的长分隔串
+                        if (boundary != null && t.startsWith("--$boundary")) break
+                        if (boundary == null && t.length > 8) break
                     }
                     bodySb.append(l).append('\n')
                     k++
@@ -207,6 +235,18 @@ object MhtParser {
             i++
         }
         return null
+    }
+
+    /**
+     * 从文件开头解析 multipart boundary(可能折行)
+     */
+    private fun parseBoundaryFromHead(raw: String): String? {
+        val head = raw.take(4096)
+        val match = Regex(
+            "boundary\\s*=\\s*(?:\"([^\"]+)\"|([^;\\s\r\\n]+))",
+            RegexOption.IGNORE_CASE
+        ).find(head) ?: return null
+        return (match.groupValues[1].ifEmpty { match.groupValues[2] }).trim().ifEmpty { null }
     }
 
     private fun decodeWithCharsetName(bytes: ByteArray, charsetName: String?): String {
@@ -308,10 +348,44 @@ object MhtParser {
         return out.toString()
     }
 
+    /** 超过这个长度改用轻量提取, 避免构建 DOM */
+    private const val FAST_TEXT_THRESHOLD = 100_000
+
+    /**
+     * 轻量 HTML 取文本: 只做标签剥离 + 实体解码, 不建 DOM.
+     * 网页快照 300KB 量级可省掉大半解析时间.
+     */
+    private fun htmlToTextFast(html: String): String? {
+        return runCatching {
+            var t = html
+            t = Regex("(?is)<script[^>]*>.*?</script>").replace(t, " ")
+            t = Regex("(?is)<style[^>]*>.*?</style>").replace(t, " ")
+            t = Regex("(?is)<noscript[^>]*>.*?</noscript>").replace(t, " ")
+            t = Regex("(?is)<head[^>]*>.*?</head>").replace(t, " ")
+            t = Regex("(?s)<!--.*?-->").replace(t, " ")
+            // 块级标签换成换行, 保证标题独立成行
+            t = Regex("(?i)<br\\s*/?>").replace(t, "\n")
+            t = Regex("(?i)</?(p|div|h[1-6]|li|tr|ul|ol|dl|dt|dd|section|article|blockquote|pre|table|thead|tbody|header|footer|nav)\\b[^>]*>")
+                .replace(t, "\n")
+            // 其余标签直接去掉
+            t = Regex("<[^>]*>").replace(t, "")
+            // 实体解码交给 jsoup(不建 DOM, 很快)
+            t = org.jsoup.parser.Parser.unescapeEntities(t, false)
+            t.replace('\u00a0', ' ')
+                .replace(Regex("[ \\t]+\\n"), "\n")
+                .replace(Regex("\\n{3,}"), "\n\n")
+                .trim()
+        }.getOrNull()
+    }
+
     // ---------------------------------------------------------------- HTML 转文本
 
     private fun htmlToText(html: String): String {
         if (html.isBlank()) return ""
+        // 大文档(网页快照常见 300KB+)构建 DOM 很慢, 直接按标签切更快
+        if (html.length > FAST_TEXT_THRESHOLD) {
+            htmlToTextFast(html)?.let { if (it.isNotBlank()) return it }
+        }
         return runCatching {
             val doc = Jsoup.parse(html)
             doc.select("script,style,noscript,iframe,head").remove()
