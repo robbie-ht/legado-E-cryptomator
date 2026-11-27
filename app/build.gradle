@@ -239,6 +239,10 @@ dependencies {
     //liveEventBus
     implementation(libs.liveeventbus)
 
+    //MHT/MIME 解析
+    implementation(libs.mime4j.core)
+    implementation(libs.mime4j.dom)
+
     //规则相关
     implementation(libs.jsoup)
     implementation(libs.json.path)

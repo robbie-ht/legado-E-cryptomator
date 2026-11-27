@@ -50,6 +50,9 @@ protobufJavalite = "4.26.1"
 #noinspection NewerVersionAvailable
 jsoup = "1.16.2"
 
+# MHT / MIME 解析(成熟库, 替代手写 MIME 拆分)
+mime4j = "0.8.11"
+
 # 新版本使用了 Android 6 以下缺少的 Arrays.setAll 方法，导致进入阅读界面会崩溃
 #noinspection GradleDependency,NewerVersionAvailable
 commonsText = "1.13.1"
@@ -187,6 +190,8 @@ flexbox = { module = "com.google.android.flexbox:flexbox", version.ref = "flexbo
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 json-path = { module = "com.jayway.jsonpath:json-path", version.ref = "jsonPath" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+mime4j-core = { module = "org.apache.james:apache-mime4j-core", version.ref = "mime4j" }
+mime4j-dom = { module = "org.apache.james:apache-mime4j-dom", version.ref = "mime4j" }
 jsoupxpath = { module = "cn.wanghaomiao:JsoupXpath", version.ref = "jsoupxpath" }
 junit = { module = "junit:junit", version = "4.13.2" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
