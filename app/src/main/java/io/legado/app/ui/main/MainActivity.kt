@@ -241,11 +241,21 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         if (LocalConfig.versionCode == appInfo.versionCode) {
             if (AppConfig.autoUpdateVariant) {
                 if (LocalConfig.lastCheckUpdate + 24.hours.inWholeMilliseconds < System.currentTimeMillis()) {
-                    AppUpdate.giteeUpdate.check(lifecycleScope)
-                        .onSuccess {
-                            showDialogFragment(
-                                UpdateDialog(it)
-                            )
+                    // 从 GitHub Releases 拉取最新版本
+                    io.legado.app.help.update.VaultUpdater.check(lifecycleScope)
+                        .onSuccess { release ->
+                            release?.let {
+                                showDialogFragment(
+                                    UpdateDialog(
+                                        AppUpdate.UpdateInfo(
+                                            it.version,
+                                            it.notes,
+                                            it.downloadUrl,
+                                            it.fileName
+                                        )
+                                    )
+                                )
+                            }
                         }
                     LocalConfig.lastCheckUpdate = System.currentTimeMillis()
                 }

@@ -58,9 +58,15 @@ class UpdateDialog() : BaseDialogFragment(R.layout.dialog_update) {
                 R.id.menu_download -> {
                     val url = arguments?.getString("url")
                     val name = arguments?.getString("name")
+                    val version = arguments?.getString("newVersion") ?: ""
                     if (url != null && name != null) {
-                        Download.start(requireContext(), url, name)
+                        // 直接下载并拉起系统安装界面
                         toastOnUi(R.string.download_start)
+                        io.legado.app.help.update.VaultUpdater.downloadAndInstall(
+                            requireContext(),
+                            io.legado.app.help.update.VaultUpdater.Release(version, "", url, name),
+                            onError = { toastOnUi(it) }
+                        )
                     }
                 }
             }
